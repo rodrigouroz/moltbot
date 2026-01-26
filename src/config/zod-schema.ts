@@ -62,6 +62,7 @@ export const ClawdbotSchema = z
     diagnostics: z
       .object({
         enabled: z.boolean().optional(),
+        flags: z.array(z.string()).optional(),
         otel: z
           .object({
             enabled: z.boolean().optional(),
@@ -324,6 +325,7 @@ export const ClawdbotSchema = z
           })
           .strict()
           .optional(),
+        trustedProxies: z.array(z.string()).optional(),
         tailscale: z
           .object({
             mode: z.union([z.literal("off"), z.literal("serve"), z.literal("funnel")]).optional(),

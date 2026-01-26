@@ -31,6 +31,8 @@ These files live under the workspace (`agents.defaults.workspace`, default
 - Decisions, preferences, and durable facts go to `MEMORY.md`.
 - Day-to-day notes and running context go to `memory/YYYY-MM-DD.md`.
 - If someone says "remember this," write it down (do not keep it in RAM).
+- This area is still evolving. It helps to remind the model to store memories; it will know what to do.
+- If you want something to stick, **ask the bot to write it** into memory.
 
 ## Automatic memory flush (pre-compaction ping)
 
@@ -176,8 +178,8 @@ agents: {
 ```
 
 Tools:
-- `memory_search` — returns snippets with file + line ranges.
-- `memory_get` — read memory file content by path.
+- `memory_search` - returns snippets with file + line ranges.
+- `memory_get` - read memory file content by path.
 
 Local mode:
 - Set `agents.defaults.memorySearch.provider = "local"`.
@@ -207,18 +209,18 @@ If full-text search is unavailable on your platform, Clawdbot falls back to vect
 
 #### Why hybrid?
 
-Vector search is great at “this means the same thing”:
-- “Mac Studio gateway host” vs “the machine running the gateway”
-- “debounce file updates” vs “avoid indexing on every write”
+Vector search is great at "this means the same thing":
+- "Mac Studio gateway host" vs "the machine running the gateway"
+- "debounce file updates" vs "avoid indexing on every write"
 
 But it can be weak at exact, high-signal tokens:
 - IDs (`a828e60`, `b3b9895a…`)
 - code symbols (`memorySearch.query.hybrid`)
-- error strings (“sqlite-vec unavailable”)
+- error strings ("sqlite-vec unavailable")
 
 BM25 (full-text) is the opposite: strong at exact tokens, weaker at paraphrases.
 Hybrid search is the pragmatic middle ground: **use both retrieval signals** so you get
-good results for both “natural language” queries and “needle in a haystack” queries.
+good results for both "natural language" queries and "needle in a haystack" queries.
 
 #### How we merge results (the current design)
 
@@ -237,11 +239,27 @@ Implementation sketch:
 Notes:
 - `vectorWeight` + `textWeight` is normalized to 1.0 in config resolution, so weights behave as percentages.
 - If embeddings are unavailable (or the provider returns a zero-vector), we still run BM25 and return keyword matches.
-- If FTS5 can’t be created, we keep vector-only search (no hard failure).
+- If FTS5 can't be created, we keep vector-only search (no hard failure).
 
-This isn’t “IR-theory perfect”, but it’s simple, fast, and tends to improve recall/precision on real notes.
+This isn't "IR-theory perfect", but it's simple, fast, and tends to improve recall/precision on real notes.
 If we want to get fancier later, common next steps are Reciprocal Rank Fusion (RRF) or score normalization
 (min/max or z-score) before mixing.
+
+#### MMR re-ranking (diversity)
+
+When hybrid search returns results, multiple chunks may contain similar or overlapping content.
+**MMR (Maximal Marginal Relevance)** re-ranks the results to balance relevance with diversity,
+ensuring the top results aren't all saying the same thing.
+
+How it works:
+1. Results are scored by their original relevance (vector + BM25 weighted score).
+2. MMR iteratively selects results that maximize: `λ × relevance − (1−λ) × similarity_to_selected`.
+3. Already-selected results are penalized via Jaccard text similarity.
+
+The `lambda` parameter controls the trade-off:
+- `lambda = 1.0` → pure relevance (no diversity penalty)
+- `lambda = 0.0` → maximum diversity (ignores relevance)
+- Default: `0.7` (balanced, slight relevance bias)
 
 Config:
 
@@ -254,7 +272,11 @@ agents: {
           enabled: true,
           vectorWeight: 0.7,
           textWeight: 0.3,
-          candidateMultiplier: 4
+          candidateMultiplier: 4,
+          mmr: {
+            enabled: true,
+            lambda: 0.7
+          }
         }
       }
     }
@@ -302,7 +324,7 @@ Notes:
 - Session updates are debounced and **indexed asynchronously** once they cross delta thresholds (best-effort).
 - `memory_search` never blocks on indexing; results can be slightly stale until background sync finishes.
 - Results still include snippets only; `memory_get` remains limited to memory files.
-- Session indexing is isolated per agent (only that agent’s session logs are indexed).
+- Session indexing is isolated per agent (only that agent's session logs are indexed).
 - Session logs live on disk (`~/.clawdbot/agents/<agentId>/sessions/*.jsonl`). Any process/user with filesystem access can read them, so treat disk access as the trust boundary. For stricter isolation, run agents under separate OS users or hosts.
 
 Delta thresholds (defaults shown):
