@@ -6,7 +6,7 @@ Docs: https://docs.clawd.bot
 Status: unreleased.
 
 ### Changes
-- TBD.
+- Memory: add MMR (Maximal Marginal Relevance) re-ranking for hybrid search diversity. Configurable via `memorySearch.query.hybrid.mmr`. (#TBD) Thanks @rodrigouroz. https://docs.clawd.bot/concepts/memory
 
 ## 2026.1.24-3
 
